@@ -6,8 +6,9 @@ require "json"
 # since the calling contruct every necessary functions
 module Topaz
   class Model
-    @q : String?
-    @tx : DB::Transaction?
+    @q    : String?
+    @args : Array(DB::Any)?
+    @tx   : DB::Transaction?
 
     macro columns(_cols)
       {% id_type = _cols[:id] ? _cols[:id] : Int32 %}
@@ -347,6 +348,13 @@ module Topaz
         model
       end
 
+      private def to_parameterized_value(val, nullable = false) : String
+        case val
+        when Time then "#{val.to_s(Topaz::Db.time_format)}"
+        else "#{val}"
+        end
+      end
+
       private def to_db_value(val, nullable = false) : String
         case val
         when Time then "'#{val.to_s(Topaz::Db.time_format)}'"
@@ -356,21 +364,21 @@ module Topaz
 
       def save
         keys = [] of String
-        vals = [] of String
+        vals = [] of DB::Any
 
         {% for key, value in cols %}
           {% if value.is_a?(NamedTupleLiteral) %}
             {% if value[:nullable] %}
               keys.push("{{key.id}}")
-              vals.push(to_db_value(@{{key.id}}, nullable: true)) unless @{{key.id}}.nil?
-              vals.push("null") if @{{key.id}}.nil?
+              vals.push(to_parameterized_value(@{{key.id}}, nullable: true)) unless @{{key.id}}.nil?
+              vals.push(nil) if @{{key.id}}.nil?
             {% else %}
               keys.push("{{key.id}}") unless @{{key.id}}.nil?
-              vals.push(to_db_value(@{{key.id}})) unless @{{key.id}}.nil?
+              vals.push(to_parameterized_value(@{{key.id}})) unless @{{key.id}}.nil?
             {% end %}
           {% else %}
             keys.push("{{key.id}}") unless @{{key.id}}.nil?
-            vals.push(to_db_value(@{{key.id}})) unless @{{key.id}}.nil?
+            vals.push(to_parameterized_value(@{{key.id}})) unless @{{key.id}}.nil?
           {% end %}
         {% end %}
 
@@ -378,13 +386,14 @@ module Topaz
 
         keys.push("created_at")
         keys.push("updated_at")
-        vals.push("\'#{time.to_s(Topaz::Db.time_format)}\'")
-        vals.push("\'#{time.to_s(Topaz::Db.time_format)}\'")
+        vals.push("#{time.to_s(Topaz::Db.time_format)}")
+        vals.push("#{time.to_s(Topaz::Db.time_format)}")
 
         _keys = keys.join(", ")
-        _vals = vals.join(", ")
+        _vals = vals.map{ |v| "?" }.join(", ")
 
         @q = "insert into #{table_name}(#{_keys}) values(#{_vals})"
+        @args = vals
 
         res = exec
 
@@ -573,8 +582,14 @@ module Topaz
 
       protected def exec
         Topaz::Log.q @q.as(String), @tx unless @q.nil?
-        res = Topaz::Db.shared.exec @q.as(String) if @tx.nil? && !@q.nil?
-        res = @tx.as(DB::Transaction).connection.exec @q.as(String) unless @tx.nil? && !@q.nil?
+        res = nil
+        if @args.nil?
+          res = Topaz::Db.shared.exec @q.as(String) if @tx.nil? && !@q.nil?
+          res = @tx.as(DB::Transaction).connection.exec @q.as(String) unless @tx.nil? && !@q.nil?
+        else
+          res = Topaz::Db.shared.exec @q.as(String), @args if @tx.nil? && !@q.nil?
+          res = @tx.as(DB::Transaction).connection.exec @q.as(String), @args unless @tx.nil? && !@q.nil?
+        end
         raise "Failed to execute \'#{@q}\'" if res.nil?
         res.as(DB::ExecResult)
       end
@@ -596,6 +611,7 @@ module Topaz
 
       protected def refresh
         @q  = ""
+        @args = nil
         @tx = nil
       end
 

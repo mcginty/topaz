@@ -15,7 +15,7 @@ macro select_db(db)
       EmptyColumn.select.first.id.should eq(1)
     end
 
-    it "created_at and udpated_at" do
+    it "created_at and updated_at" do
       EmptyColumn.drop_table
       EmptyColumn.create_table
       e0 = EmptyColumn.create
@@ -38,6 +38,13 @@ macro select_db(db)
       AllTypes.drop_table
       AllTypes.create_table
       AllTypes.create("test", 10, 12.0f32, 10.0, Time.now)
+      AllTypes.select.size.should eq(1)
+    end
+
+    it "Check SQL injection resistance" do
+      AllTypes.drop_table
+      AllTypes.create_table
+      AllTypes.create("test'\"`", 10, 12.0f32, 10.0, Time.now)
       AllTypes.select.size.should eq(1)
     end
 
