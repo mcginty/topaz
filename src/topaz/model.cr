@@ -169,24 +169,36 @@ module Topaz
         updated = ""
 
         time = Time.now
+        args = [] of DB::Any
 
         if data.keys.size == 0
           {% for key, value, idx in cols %}
             {% if value.is_a?(NamedTupleLiteral) %}
               {% if value[:nullable] %}
-                updated += "{{key.id}} = #{to_db_value(@{{key.id}}, true)}, " unless @{{key.id}}.nil?
-                updated += "{{key.id}} = null, " if @{{key.id}}.nil?
+                unless @{{key.id}}.nil?
+                  updated += "{{key.id}} = ?, "
+                  args << to_parameterized_value(@{{key.id}}, true)
+                else
+                  updated += "{{key.id}} = null, "
+                end
               {% else %}
-                updated += "{{key.id}} = #{to_db_value(@{{key.id}})}, " unless @{{key.id}}.nil?
+                unless @{{key.id}}.nil?
+                  updated += "{{key.id}} = ?, "
+                  args << to_parameterized_value(@{{key.id}})
+                end
               {% end %}
             {% else %}
-              updated += "{{key.id}} = #{to_db_value(@{{key.id}})}, " unless @{{key.id}}.nil?
+              unless @{{key.id}}.nil?
+                updated += "{{key.id}} = ?, "
+                args << to_parameterized_value(@{{key.id}})
+              end
             {% end %}
           {% end %}
         else
           data.each_with_index do |key, value, idx|
             unless value.nil?
-              updated += "#{key} = #{to_db_value(value)}, "
+              updated += "#{key} = ?, "
+              args << to_parameterized_value(value)
               set_value_of(key.to_s, value) unless new_record?
             else
               updated += "#{key} = null, "
@@ -198,6 +210,7 @@ module Topaz
         updated += "updated_at = \'#{time.to_s(Topaz::Db.time_format)}\'"
         @updated_at = time
         @q = "update #{table_name} set #{updated} #{@q}"
+        @args = args
         exec
         refresh
       end
