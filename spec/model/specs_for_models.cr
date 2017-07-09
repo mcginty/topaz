@@ -76,6 +76,17 @@ macro select_db(db)
       SearchedModel.order("age", "desc").range(1, 3).select.first.name.should eq("mock8")
     end
 
+    it "Search models (parameterized)" do
+      SearchedModel.drop_table
+      SearchedModel.create_table
+      10.times do |i|
+        SearchedModel.create("mock#{i}", i)
+      end
+      SearchedModel.find(1).name.should eq("mock0")
+      SearchedModel.where("name = ?", ["mock0"] of DB::Any).select.size.should eq(1)
+      SearchedModel.order("age", "desc").range(1, 3).select.first.name.should eq("mock8")
+    end
+
     it "Update models" do
       UpdatedModel.drop_table
       UpdatedModel.create_table

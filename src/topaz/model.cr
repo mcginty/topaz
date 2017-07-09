@@ -69,8 +69,9 @@ module Topaz
         {% end %}
       end
 
-      protected def set_query(q)
+      protected def set_query(q, args : Array(DB::Any)? = nil)
         @q = q
+        @args = args
         self
       end
 
@@ -82,8 +83,8 @@ module Topaz
         new.set_query("where id = #{id}").select.first
       end
 
-      def self.where(q : String)
-        new.set_query("where #{q} ")
+      def self.where(q : String, args : Array(DB::Any)? = nil)
+        new.set_query("where #{q} ", args)
       end
 
       def self.order(column : String, sort = "asc")
@@ -117,8 +118,14 @@ module Topaz
         model.set_query("where id = #{id}").select.first
       end
 
-      def where(q : String)
+      def where(q : String, args : Array(DB::Any)? = nil)
         @q = "#{@q}where #{q} "
+
+        if @args.nil?
+          @args = args
+        elsif !args.nil?
+          @args.push(*args)
+        end
         self
       end
 
@@ -259,52 +266,101 @@ module Topaz
 
         set = Set.new
 
-        db.query(@q.as(String)) do |rows|
-          rows.each do
-            case Topaz::Db.scheme
-            when "mysql", "postgres"
-              set.push(
-                typeof(self).new(
-                rows.read({{ id_type.id }}), # id
-                {% for key, value in cols %}
-                  {% if value.is_a?(NamedTupleLiteral) %}
-                    read_value(rows, {{value[:type]}}?),
-                  {% else %}
-                    read_value(rows, {{value.id}}?),
-                  {% end %}
-                {% end %}
-                read_value(rows, Time),
-                read_value(rows, Time)
-              ))
-            when "sqlite3"
-              set.push(
-                typeof(self).new(
-                {{ id_type }}.new(rows.read(Int64)), # id
-                {% for key, value in cols %}
-                  {% if value.is_a?(NamedTupleLiteral) %}
-                    {% if value[:type].id == "Int32" %}
-                      (rows.read(Int64?) || Nilwrapper).to_i32,
-                    {% elsif value[:type].id == "Float32" %}
-                      (rows.read(Float64?) || Nilwrapper).to_f32,
-                    {% else %}
+        if @args.nil?
+          db.query(@q.as(String)) do |rows|
+            rows.each do
+              case Topaz::Db.scheme
+              when "mysql", "postgres"
+                set.push(
+                  typeof(self).new(
+                  rows.read({{ id_type.id }}), # id
+                  {% for key, value in cols %}
+                    {% if value.is_a?(NamedTupleLiteral) %}
                       read_value(rows, {{value[:type]}}?),
-                    {% end %}
-                  {% else %}
-                    {% if value.id == "Int32" %}
-                      (rows.read(Int64?) || Nilwrapper).to_i32,
-                    {% elsif value.id == "Float32" %}
-                      (rows.read(Float64?) || Nilwrapper).to_f32,
                     {% else %}
                       read_value(rows, {{value.id}}?),
                     {% end %}
                   {% end %}
-                {% end %}
-                read_value(rows, Time),
-                read_value(rows, Time)
-              ))
+                  read_value(rows, Time),
+                  read_value(rows, Time)
+                ))
+              when "sqlite3"
+                set.push(
+                  typeof(self).new(
+                  {{ id_type }}.new(rows.read(Int64)), # id
+                  {% for key, value in cols %}
+                    {% if value.is_a?(NamedTupleLiteral) %}
+                      {% if value[:type].id == "Int32" %}
+                        (rows.read(Int64?) || Nilwrapper).to_i32,
+                      {% elsif value[:type].id == "Float32" %}
+                        (rows.read(Float64?) || Nilwrapper).to_f32,
+                      {% else %}
+                        read_value(rows, {{value[:type]}}?),
+                      {% end %}
+                    {% else %}
+                      {% if value.id == "Int32" %}
+                        (rows.read(Int64?) || Nilwrapper).to_i32,
+                      {% elsif value.id == "Float32" %}
+                        (rows.read(Float64?) || Nilwrapper).to_f32,
+                      {% else %}
+                        read_value(rows, {{value.id}}?),
+                      {% end %}
+                    {% end %}
+                  {% end %}
+                  read_value(rows, Time),
+                  read_value(rows, Time)
+                ))
+              end
             end
-          end
-        end unless @q.nil?
+          end unless @q.nil?
+        else
+          db.query(@q.as(String), @args) do |rows|
+            rows.each do
+              case Topaz::Db.scheme
+              when "mysql", "postgres"
+                set.push(
+                  typeof(self).new(
+                  rows.read({{ id_type.id }}), # id
+                  {% for key, value in cols %}
+                    {% if value.is_a?(NamedTupleLiteral) %}
+                      read_value(rows, {{value[:type]}}?),
+                    {% else %}
+                      read_value(rows, {{value.id}}?),
+                    {% end %}
+                  {% end %}
+                  read_value(rows, Time),
+                  read_value(rows, Time)
+                ))
+              when "sqlite3"
+                set.push(
+                  typeof(self).new(
+                  {{ id_type }}.new(rows.read(Int64)), # id
+                  {% for key, value in cols %}
+                    {% if value.is_a?(NamedTupleLiteral) %}
+                      {% if value[:type].id == "Int32" %}
+                        (rows.read(Int64?) || Nilwrapper).to_i32,
+                      {% elsif value[:type].id == "Float32" %}
+                        (rows.read(Float64?) || Nilwrapper).to_f32,
+                      {% else %}
+                        read_value(rows, {{value[:type]}}?),
+                      {% end %}
+                    {% else %}
+                      {% if value.id == "Int32" %}
+                        (rows.read(Int64?) || Nilwrapper).to_i32,
+                      {% elsif value.id == "Float32" %}
+                        (rows.read(Float64?) || Nilwrapper).to_f32,
+                      {% else %}
+                        read_value(rows, {{value.id}}?),
+                      {% end %}
+                    {% end %}
+                  {% end %}
+                  read_value(rows, Time),
+                  read_value(rows, Time)
+                ))
+              end
+            end
+          end unless @q.nil?
+        end
         set
       end
 
