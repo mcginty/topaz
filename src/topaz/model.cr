@@ -79,7 +79,7 @@ module Topaz
         new.in(tx)
       end
 
-      def self.find(id)
+      def self.find(id : Int)
         new.set_query("where id = #{id}").select.first
       end
 
@@ -112,7 +112,7 @@ module Topaz
         self
       end
 
-      def find(id)
+      def find(id : Int)
         model = typeof(self).new
         model.in(@tx.as(DB::Transaction)) unless @tx.nil?
         model.set_query("where id = #{id}").select.first
